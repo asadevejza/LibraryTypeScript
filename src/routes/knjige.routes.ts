@@ -5,12 +5,62 @@ import { autori } from "../data/autor.data";
 import { NotFoundError, BadRequestError } from "../errors/AppError";
 import { validate } from "../middleware/validate";
 import { novaKnjigaSchema, azurirajKnjiguSchema, NovaKnjiga } from "../schemas/knjiga.schema";
+import { paginiraj, parsirajStranicenje } from "../utils/paginacija";
 
 const router = Router();
 
-// GET /api/knjige - vrati sve knjige
+// GET /api/knjige - vrati knjige, uz opciono filtriranje/sortiranje/paginaciju
+// Primjeri:
+//   /api/knjige?autorId=1
+//   /api/knjige?dostupna=true
+//   /api/knjige?godinaOd=1900&godinaDo=2000
+//   /api/knjige?sortiraj=godinaIzdanja&redoslijed=desc
+//   /api/knjige?strana=2&limit=5
 router.get("/", (req: Request, res: Response) => {
-  res.json(knjige);
+  let rezultat: Knjiga[] = [...knjige];
+
+  // --- FILTRIRANJE ---
+
+  if (req.query.autorId !== undefined) {
+    const autorId = Number(req.query.autorId);
+    rezultat = rezultat.filter((k) => k.autorId === autorId);
+  }
+
+  if (req.query.dostupna !== undefined) {
+    const dostupna = req.query.dostupna === "true";
+    rezultat = rezultat.filter((k) => k.dostupna === dostupna);
+  }
+
+  if (req.query.godinaOd !== undefined) {
+    const godinaOd = Number(req.query.godinaOd);
+    rezultat = rezultat.filter((k) => k.godinaIzdanja >= godinaOd);
+  }
+
+  if (req.query.godinaDo !== undefined) {
+    const godinaDo = Number(req.query.godinaDo);
+    rezultat = rezultat.filter((k) => k.godinaIzdanja <= godinaDo);
+  }
+
+  // --- SORTIRANJE ---
+
+  const poljaZaSortiranje: (keyof Knjiga)[] = ["naslov", "godinaIzdanja"];
+  const trazenoPolje = req.query.sortiraj as string | undefined;
+
+  if (trazenoPolje && poljaZaSortiranje.includes(trazenoPolje as keyof Knjiga)) {
+    const polje = trazenoPolje as keyof Knjiga;
+    const smjer = req.query.redoslijed === "desc" ? -1 : 1;
+
+    rezultat = rezultat.sort((a, b) => {
+      if (a[polje] < b[polje]) return -1 * smjer;
+      if (a[polje] > b[polje]) return 1 * smjer;
+      return 0;
+    });
+  }
+
+  // --- PAGINACIJA ---
+
+  const { strana, limit } = parsirajStranicenje(req.query);
+  res.json(paginiraj(rezultat, strana, limit));
 });
 
 // GET /api/knjige/:id - vrati odredjenu knjigu

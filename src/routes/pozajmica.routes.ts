@@ -7,12 +7,39 @@ import { Pozajmica } from "../models/pozajmica.model";
 import { NotFoundError, ConflictError } from "../errors/AppError";
 import { validate } from "../middleware/validate";
 import { novaPozajmicaSchema, NovaPozajmica } from "../schemas/pozajmica.schema";
+import { paginiraj, parsirajStranicenje } from "../utils/paginacija";
 
 const router = Router();
 
-// GET /api/pozajmice - vrati sve pozajmice
+// GET /api/pozajmice - vrati pozajmice, uz opciono filtriranje/sortiranje/paginaciju
+// /api/pozajmice?clanId=1&vraceno=false&sortiraj=datumPozajmljivanja&strana=1&limit=10
 router.get("/", (req: Request, res: Response) => {
-  res.json(pozajmice);
+  let rezultat: Pozajmica[] = [...pozajmice];
+
+  if (req.query.clanId !== undefined) {
+    const clanId = Number(req.query.clanId);
+    rezultat = rezultat.filter((p) => p.clanId === clanId);
+  }
+
+  if (req.query.knjigaId !== undefined) {
+    const knjigaId = Number(req.query.knjigaId);
+    rezultat = rezultat.filter((p) => p.knjigaId === knjigaId);
+  }
+
+  if (req.query.vraceno !== undefined) {
+    const vraceno = req.query.vraceno === "true";
+    rezultat = rezultat.filter((p) => (p.datumVracanja !== null) === vraceno);
+  }
+
+  if (req.query.sortiraj === "datumPozajmljivanja") {
+    const smjer = req.query.redoslijed === "desc" ? -1 : 1;
+    rezultat = rezultat.sort(
+      (a, b) => a.datumPozajmljivanja.localeCompare(b.datumPozajmljivanja) * smjer
+    );
+  }
+
+  const { strana, limit } = parsirajStranicenje(req.query);
+  res.json(paginiraj(rezultat, strana, limit));
 });
 
 // GET /api/pozajmice/aktivne - vrati samo knjige koje trenutno nisu vracene

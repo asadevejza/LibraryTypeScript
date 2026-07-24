@@ -5,12 +5,40 @@ import { Autor } from "../models/autor.model";
 import { NotFoundError, ConflictError } from "../errors/AppError";
 import { validate } from "../middleware/validate";
 import { noviAutorSchema, azurirajAutoraSchema, NoviAutor } from "../schemas/autor.schema";
+import { paginiraj, parsirajStranicenje } from "../utils/paginacija";
 
 const router = Router();
 
-// vrati sve autore
+// vrati autore, uz opciono filtriranje/sortiranje/paginaciju
+// /api/autori?ime=orwell&drzava=Britanija&sortiraj=ime&strana=1&limit=10
 router.get("/", (req: Request, res: Response) => {
-  res.json(autori);
+  let rezultat: Autor[] = [...autori];
+
+  if (req.query.ime !== undefined) {
+    const trazenoIme = (req.query.ime as string).toLowerCase();
+    rezultat = rezultat.filter((a) => a.ime.toLowerCase().includes(trazenoIme));
+  }
+
+  if (req.query.drzava !== undefined) {
+    const trazenaDrzava = (req.query.drzava as string).toLowerCase();
+    rezultat = rezultat.filter((a) => a.drzava.toLowerCase().includes(trazenaDrzava));
+  }
+
+  const poljaZaSortiranje: (keyof Autor)[] = ["ime", "godinaRodjenja"];
+  const trazenoPolje = req.query.sortiraj as string | undefined;
+
+  if (trazenoPolje && poljaZaSortiranje.includes(trazenoPolje as keyof Autor)) {
+    const polje = trazenoPolje as keyof Autor;
+    const smjer = req.query.redoslijed === "desc" ? -1 : 1;
+    rezultat = rezultat.sort((a, b) => {
+      if (a[polje] < b[polje]) return -1 * smjer;
+      if (a[polje] > b[polje]) return 1 * smjer;
+      return 0;
+    });
+  }
+
+  const { strana, limit } = parsirajStranicenje(req.query);
+  res.json(paginiraj(rezultat, strana, limit));
 });
 
 // vrati odredjenog autora sa tim id

@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import knjigeRoutes from "./routes/knjige.routes";
 import autoriRoutes from "./routes/autor.routes";
 import clanoviRoutes from "./routes/clan.router";
@@ -9,6 +10,7 @@ import { errorHandler } from "./middleware/errorHandler";
 const app = express();
 const PORT = 3000;
 
+app.use(cors());
 app.use(express.json());
 app.use("/api/knjige", knjigeRoutes);
 app.use("/api/autori", autoriRoutes);

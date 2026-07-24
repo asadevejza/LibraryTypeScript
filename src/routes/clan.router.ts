@@ -4,12 +4,32 @@ import { clanovi, generisiClanId } from "../data/clan.data";
 import { NotFoundError, ConflictError } from "../errors/AppError";
 import { validate } from "../middleware/validate";
 import { noviClanSchema, azurirajClanaSchema, NoviClan } from "../schemas/clan.schema";
+import { paginiraj, parsirajStranicenje } from "../utils/paginacija";
 
 const router = Router();
 
-// vrati sve clanove
+// vrati clanove, uz opciono filtriranje/sortiranje/paginaciju
+// /api/clanovi?ime=amina&sortiraj=ime&strana=1&limit=10
 router.get("/", (req: Request, res: Response) => {
-  res.json(clanovi);
+  let rezultat: Clan[] = [...clanovi];
+
+  if (req.query.ime !== undefined) {
+    const trazenoIme = (req.query.ime as string).toLowerCase();
+    rezultat = rezultat.filter((c) => c.ime.toLowerCase().includes(trazenoIme));
+  }
+
+  if (req.query.email !== undefined) {
+    const trazeniEmail = (req.query.email as string).toLowerCase();
+    rezultat = rezultat.filter((c) => c.email.toLowerCase().includes(trazeniEmail));
+  }
+
+  if (req.query.sortiraj === "ime") {
+    const smjer = req.query.redoslijed === "desc" ? -1 : 1;
+    rezultat = rezultat.sort((a, b) => a.ime.localeCompare(b.ime) * smjer);
+  }
+
+  const { strana, limit } = parsirajStranicenje(req.query);
+  res.json(paginiraj(rezultat, strana, limit));
 });
 
 // vrati odredjenog clana

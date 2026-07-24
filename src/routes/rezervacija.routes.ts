@@ -6,12 +6,34 @@ import { Rezervacija } from "../models/rezervacija.model";
 import { NotFoundError, ConflictError } from "../errors/AppError";
 import { validate } from "../middleware/validate";
 import { novaRezervacijaSchema, NovaRezervacija } from "../schemas/rezervacija.schema";
+import { paginiraj, parsirajStranicenje } from "../utils/paginacija";
 
 const router = Router();
 
-// GET /api/rezervacije - vrati sve rezervacije
+// GET /api/rezervacije - vrati rezervacije, uz opciono filtriranje/sortiranje/paginaciju
+// /api/rezervacije?clanId=1&sortiraj=datumRezervacije&strana=1&limit=10
 router.get("/", (req: Request, res: Response) => {
-  res.json(rezervacije);
+  let rezultat: Rezervacija[] = [...rezervacije];
+
+  if (req.query.clanId !== undefined) {
+    const clanId = Number(req.query.clanId);
+    rezultat = rezultat.filter((r) => r.clanId === clanId);
+  }
+
+  if (req.query.knjigaId !== undefined) {
+    const knjigaId = Number(req.query.knjigaId);
+    rezultat = rezultat.filter((r) => r.knjigaId === knjigaId);
+  }
+
+  if (req.query.sortiraj === "datumRezervacije") {
+    const smjer = req.query.redoslijed === "desc" ? -1 : 1;
+    rezultat = rezultat.sort(
+      (a, b) => a.datumRezervacije.localeCompare(b.datumRezervacije) * smjer
+    );
+  }
+
+  const { strana, limit } = parsirajStranicenje(req.query);
+  res.json(paginiraj(rezultat, strana, limit));
 });
 
 // GET /api/rezervacije/knjiga/:knjigaId - red cekanja za odredjenu knjigu
