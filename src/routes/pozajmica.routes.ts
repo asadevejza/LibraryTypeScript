@@ -112,7 +112,9 @@ router.put("/:id/vrati", (req: Request, res: Response) => {
     return res.json(pozajmica);
   }
 
-  const redZaKnjigu = rezervacije.filter((r) => r.knjigaId === knjiga.id);
+  const redZaKnjigu = rezervacije.filter(
+    (r) => r.knjigaId === knjiga.id && r.status === "na_cekanju"
+  );
 
   if (redZaKnjigu.length === 0) {
     knjiga.dostupna = true;
@@ -120,8 +122,7 @@ router.put("/:id/vrati", (req: Request, res: Response) => {
   }
 
   const sljedeciURedu = redZaKnjigu[0];
-  const indexRezervacije = rezervacije.findIndex((r) => r.id === sljedeciURedu.id);
-  rezervacije.splice(indexRezervacije, 1);
+  sljedeciURedu.status = "realizovana";
 
   const novaPozajmica: Pozajmica = {
     id: generisiPozajmicaId(),
