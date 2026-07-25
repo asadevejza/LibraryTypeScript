@@ -1,8 +1,6 @@
 import { Router, Request, Response } from "express";
-import { rezervacije, generisiRezervacijaId } from "../data/rezervacija.data";
-import { knjige } from "../data/knjige.data";
-import { clanovi } from "../data/clan.data";
-import { Rezervacija, StatusRezervacije } from "../models/rezervacija.model";
+import { prisma } from "../utils/prisma";
+import { StatusRezervacije } from "@prisma/client";
 import { NotFoundError, ConflictError } from "../errors/AppError";
 import { validate } from "../middleware/validate";
 import { novaRezervacijaSchema, NovaRezervacija } from "../schemas/rezervacija.schema";
@@ -10,16 +8,13 @@ import { paginiraj, parsirajStranicenje } from "../utils/paginacija";
 
 const router = Router();
 
-// Lista svih dozvoljenih statusa - koristimo je za validaciju ?status= filtera.
-// TypeScript ne provjerava ovo automatski u obicnom nizu, ali barem znamo
-// da svaka vrijednost ovdje mora biti tacno StatusRezervacije, jer smo
-// eksplicitno napisali tip niza.
 const SVI_STATUSI: StatusRezervacije[] = ["na_cekanju", "realizovana", "otkazana"];
 
 // GET /api/rezervacije - vrati rezervacije, uz opciono filtriranje/sortiranje/paginaciju
 // /api/rezervacije?clanId=1&status=na_cekanju&sortiraj=datumRezervacije&strana=1&limit=10
-router.get("/", (req: Request, res: Response) => {
-  let rezultat: Rezervacija[] = [...rezervacije];
+router.get("/", async (req: Request, res: Response) => {
+  const sveRezervacije = await prisma.rezervacije.findMany();
+  let rezultat = [...sveRezervacije];
 
   if (req.query.clanId !== undefined) {
     const clanId = Number(req.query.clanId);
@@ -40,7 +35,7 @@ router.get("/", (req: Request, res: Response) => {
   if (req.query.sortiraj === "datumRezervacije") {
     const smjer = req.query.redoslijed === "desc" ? -1 : 1;
     rezultat = rezultat.sort(
-      (a, b) => a.datumRezervacije.localeCompare(b.datumRezervacije) * smjer
+      (a, b) => (a.datumRezervacije.getTime() - b.datumRezervacije.getTime()) * smjer
     );
   }
 
@@ -49,19 +44,20 @@ router.get("/", (req: Request, res: Response) => {
 });
 
 // GET /api/rezervacije/knjiga/:knjigaId - red cekanja za odredjenu knjigu
-// (samo one koje su jos "na_cekanju" - realizovane/otkazane vise ne cekaju)
-router.get("/knjiga/:knjigaId", (req: Request, res: Response) => {
+// (samo one koje su jos "na_cekanju")
+router.get("/knjiga/:knjigaId", async (req: Request, res: Response) => {
   const knjigaId = Number(req.params.knjigaId);
-  const red = rezervacije.filter(
-    (r) => r.knjigaId === knjigaId && r.status === "na_cekanju"
-  );
+  const red = await prisma.rezervacije.findMany({
+    where: { knjigaId, status: "na_cekanju" },
+    orderBy: { id: "asc" },
+  });
   res.json(red);
 });
 
 // GET /api/rezervacije/:id - vrati jednu rezervaciju
-router.get("/:id", (req: Request, res: Response) => {
+router.get("/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const rezervacija = rezervacije.find((r) => r.id === id);
+  const rezervacija = await prisma.rezervacije.findUnique({ where: { id } });
 
   if (!rezervacija) {
     throw new NotFoundError("Rezervacija nije pronađena");
@@ -71,15 +67,15 @@ router.get("/:id", (req: Request, res: Response) => {
 });
 
 // POST /api/rezervacije - rezervisi knjigu
-router.post("/", validate(novaRezervacijaSchema), (req: Request, res: Response) => {
+router.post("/", validate(novaRezervacijaSchema), async (req: Request, res: Response) => {
   const podaci: NovaRezervacija = req.body;
 
-  const knjiga = knjige.find((k) => k.id === podaci.knjigaId);
+  const knjiga = await prisma.knjige.findUnique({ where: { id: podaci.knjigaId } });
   if (!knjiga) {
     throw new NotFoundError("Knjiga nije pronađena");
   }
 
-  const clan = clanovi.find((c) => c.id === podaci.clanId);
+  const clan = await prisma.clanovi.findUnique({ where: { id: podaci.clanId } });
   if (!clan) {
     throw new NotFoundError("Član nije pronađen");
   }
@@ -88,33 +84,31 @@ router.post("/", validate(novaRezervacijaSchema), (req: Request, res: Response) 
     throw new ConflictError("Knjiga je trenutno dostupna, pozajmite je umjesto da je rezervišete");
   }
 
-  // provjeravamo samo AKTIVNE rezervacije - ako je clan ranije rezervisao istu
-  // knjigu, ali je ta rezervacija vec realizovana ili otkazana, smije opet
-  const vecRezervisao = rezervacije.some(
-    (r) => r.knjigaId === podaci.knjigaId && r.clanId === podaci.clanId && r.status === "na_cekanju"
-  );
+  const vecRezervisao = await prisma.rezervacije.findFirst({
+    where: { knjigaId: podaci.knjigaId, clanId: podaci.clanId, status: "na_cekanju" },
+  });
   if (vecRezervisao) {
     throw new ConflictError("Već imate aktivnu rezervaciju za ovu knjigu");
   }
 
-  const novaRezervacija: Rezervacija = {
-    id: generisiRezervacijaId(),
-    knjigaId: podaci.knjigaId,
-    clanId: podaci.clanId,
-    datumRezervacije: new Date().toISOString(),
-    status: "na_cekanju",
-  };
+  const novaRezervacija = await prisma.rezervacije.create({
+    data: {
+      knjigaId: podaci.knjigaId,
+      clanId: podaci.clanId,
+      datumRezervacije: new Date(),
+      status: "na_cekanju",
+    },
+  });
 
-  rezervacije.push(novaRezervacija);
   res.status(201).json(novaRezervacija);
 });
 
 // DELETE /api/rezervacije/:id - otkazi rezervaciju
 // (ne brisemo je fizicki - samo joj mijenjamo status, da sacuvamo istoriju)
-router.delete("/:id", (req: Request, res: Response) => {
+router.delete("/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const rezervacija = rezervacije.find((r) => r.id === id);
 
+  const rezervacija = await prisma.rezervacije.findUnique({ where: { id } });
   if (!rezervacija) {
     throw new NotFoundError("Rezervacija nije pronađena");
   }
@@ -123,7 +117,11 @@ router.delete("/:id", (req: Request, res: Response) => {
     throw new ConflictError("Samo rezervacija koja čeka u redu se može otkazati");
   }
 
-  rezervacija.status = "otkazana";
+  await prisma.rezervacije.update({
+    where: { id },
+    data: { status: "otkazana" },
+  });
+
   res.status(204).send();
 });
 

@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model knjige {
+  id            Int     @id @default(autoincrement())
+  naslov        String  @db.VarChar(255)
+  autorId       Int     @map("autor_id")
+  godinaIzdanja Int     @map("godina_izdanja")
+  dostupna      Boolean @default(true)
+
+  autor       autori        @relation(fields: [autorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_knjige_autor")
+  pozajmice   pozajmice[]
+  rezervacije rezervacije[]
+}
+
+model autori {
+  id             Int    @id @default(autoincrement())
+  ime            String @db.VarChar(255)
+  godinaRodjenja Int    @map("godina_rodjenja")
+  drzava         String @db.VarChar(255)
+
+  knjige knjige[]
+}
+
+model clanovi {
+  id               Int    @id @default(autoincrement())
+  ime              String @db.VarChar(255)
+  email            String @unique @db.VarChar(255)
+  brojClanskeKarte String @unique @map("broj_clanske_karte") @db.VarChar(50)
+
+  pozajmice   pozajmice[]
+  rezervacije rezervacije[]
+}
+
+model pozajmice {
+  id                  Int       @id @default(autoincrement())
+  knjigaId            Int       @map("knjiga_id")
+  clanId              Int       @map("clan_id")
+  datumPozajmljivanja DateTime  @map("datum_pozajmljivanja") @db.Date
+  datumVracanja       DateTime? @map("datum_vracanja") @db.Date
+
+  clan   clanovi @relation(fields: [clanId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pozajmice_clan")
+  knjiga knjige  @relation(fields: [knjigaId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pozajmice_knjiga")
+}
+
+model rezervacije {
+  id               Int                @id @default(autoincrement())
+  knjigaId         Int                @map("knjiga_id")
+  clanId           Int                @map("clan_id")
+  datumRezervacije DateTime           @map("datum_rezervacije") @db.Date
+  status           StatusRezervacije  @default(na_cekanju)
+
+  clan   clanovi @relation(fields: [clanId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rezervacije_clan")
+  knjiga knjige  @relation(fields: [knjigaId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rezervacije_knjiga")
+}
+
+enum StatusRezervacije {
+  na_cekanju
+  realizovana
+  otkazana
+
+  @@map("status_rezervacije")
+}

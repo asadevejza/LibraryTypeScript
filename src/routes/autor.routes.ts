@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
-import { autori, generisiAutorId } from "../data/autor.data";
-import { knjige } from "../data/knjige.data";
+import { prisma } from "../utils/prisma";
 import { Autor } from "../models/autor.model";
 import { NotFoundError, ConflictError } from "../errors/AppError";
 import { validate } from "../middleware/validate";
@@ -11,8 +10,9 @@ const router = Router();
 
 // vrati autore, uz opciono filtriranje/sortiranje/paginaciju
 // /api/autori?ime=orwell&drzava=Britanija&sortiraj=ime&strana=1&limit=10
-router.get("/", (req: Request, res: Response) => {
-  let rezultat: Autor[] = [...autori];
+router.get("/", async (req: Request, res: Response) => {
+  const sviAutori = await prisma.autori.findMany();
+  let rezultat: Autor[] = [...sviAutori];
 
   if (req.query.ime !== undefined) {
     const trazenoIme = (req.query.ime as string).toLowerCase();
@@ -42,60 +42,70 @@ router.get("/", (req: Request, res: Response) => {
 });
 
 // vrati odredjenog autora sa tim id
-router.get("/:id", (req: Request, res: Response) => {
+router.get("/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const autor = autori.find((a) => a.id === id);
+  const autor = await prisma.autori.findUnique({ where: { id } });
   if (!autor) throw new NotFoundError("Autor nije pronađen");
   res.json(autor);
 });
 
 // vrati sve knjige od odredjenog autora
-router.get("/:id/knjige", (req: Request, res: Response) => {
+router.get("/:id/knjige", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const autor = autori.find((k) => k.id === id);
+  const autor = await prisma.autori.findUnique({ where: { id } });
   if (!autor) throw new NotFoundError("Autor nije pronađen");
-  const knjigeAutor = knjige.filter((k) => k.autorId === id);
+
+  const knjigeAutor = await prisma.knjige.findMany({ where: { autorId: id } });
   res.json(knjigeAutor);
 });
 
 // dodaj novog autora
-router.post("/", validate(noviAutorSchema), (req: Request, res: Response) => {
+router.post("/", validate(noviAutorSchema), async (req: Request, res: Response) => {
   const podaci: NoviAutor = req.body;
-  const noviAutor: Autor = {
-    id: generisiAutorId(),
-    ime: podaci.ime,
-    godinaRodjenja: podaci.godinaRodjenja,
-    drzava: podaci.drzava,
-  };
-  autori.push(noviAutor);
+
+  const noviAutor = await prisma.autori.create({
+    data: {
+      ime: podaci.ime,
+      godinaRodjenja: podaci.godinaRodjenja,
+      drzava: podaci.drzava,
+    },
+  });
+
   res.status(201).json(noviAutor);
 });
 
 // izmjeni autora
-router.put("/:id", validate(azurirajAutoraSchema), (req: Request, res: Response) => {
+router.put("/:id", validate(azurirajAutoraSchema), async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const index = autori.findIndex((a) => a.id === id);
 
-  if (index === -1) {
+  const postoji = await prisma.autori.findUnique({ where: { id } });
+  if (!postoji) {
     throw new NotFoundError("Autor nije pronađen");
   }
 
-  autori[index] = { ...autori[index], ...req.body, id };
-  res.json(autori[index]);
+  const azuriran = await prisma.autori.update({
+    where: { id },
+    data: req.body,
+  });
+
+  res.json(azuriran);
 });
 
 // brisanje
-router.delete("/:id", (req: Request, res: Response) => {
+router.delete("/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const index = autori.findIndex((a) => a.id === id);
-  if (index === -1) {
+
+  const postoji = await prisma.autori.findUnique({ where: { id } });
+  if (!postoji) {
     throw new NotFoundError("Autor nije pronađen");
   }
-  const imaKnjigu = knjige.some((k) => k.autorId === id);
+
+  const imaKnjigu = await prisma.knjige.findFirst({ where: { autorId: id } });
   if (imaKnjigu) {
     throw new ConflictError("Ne može se obrisati autor koji ima knjigu u bazi");
   }
-  autori.splice(index, 1);
+
+  await prisma.autori.delete({ where: { id } });
   res.status(204).send();
 });
 
