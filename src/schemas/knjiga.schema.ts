@@ -8,6 +8,7 @@ export const novaKnjigaSchema = z.object({
     .int()
     .min(0)
     .max(new Date().getFullYear(), "Godina izdanja ne može biti u budućnosti"),
+    isbn:z.string().min(1,"Isbn ne smije biti prazan").optional(),
   dostupna: z.boolean().optional(),
 });
 

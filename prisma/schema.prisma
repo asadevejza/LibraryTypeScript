@@ -13,7 +13,7 @@ model knjige {
   autorId       Int     @map("autor_id")
   godinaIzdanja Int     @map("godina_izdanja")
   dostupna      Boolean @default(true)
-
+  isbn String? @db.VarChar(20)
   autor       autori        @relation(fields: [autorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_knjige_autor")
   pozajmice   pozajmice[]
   rezervacije rezervacije[]

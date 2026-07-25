@@ -76,6 +76,7 @@ router.post("/", validate(novaKnjigaSchema), async (req: Request, res: Response)
       naslov: podaci.naslov,
       autorId: podaci.autorId,
       godinaIzdanja: podaci.godinaIzdanja,
+      isbn: podaci.isbn,
       dostupna: podaci.dostupna ?? true,
     },
   });
