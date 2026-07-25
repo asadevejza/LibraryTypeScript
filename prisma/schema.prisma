@@ -24,7 +24,7 @@ model autori {
   ime            String @db.VarChar(255)
   godinaRodjenja Int    @map("godina_rodjenja")
   drzava         String @db.VarChar(255)
-
+  biografija     String?  @db.Text
   knjige knjige[]
 }
 
